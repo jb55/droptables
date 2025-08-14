@@ -1,10 +1,94 @@
+//! # droptables_macros
+//!
+//! Procedural macros for the [`droptables`](https://docs.rs/droptables/) crate.
+//!
+//! The primary export is the [`WeightedEnum`] derive, which lets you annotate
+//! enum variants with `#[probability(...)]` and then sample them via the
+//! runtime crate’s `DropTable`.
+//!
+//! ## Quick start
+//! ```rust,ignore
+//! use droptables::{DropTable, WeightedEnum};
+//! use droptables_macros::WeightedEnum;
+//! use rand::Rng;
+//!
+//! #[derive(Copy, Clone, Debug, WeightedEnum)]
+//! enum Loot {
+//!     #[probability(60.0)] Common,
+//!     #[probability(30.0)] Uncommon,
+//!     #[probability(9.0)]  Rare,
+//!     #[probability(1.0)]  Legendary,
+//! }
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let table: DropTable<Loot> = Loot::droptable()?; // O(n) build
+//! let mut rng = rand::rng();
+//! let draw = table.sample(&mut rng);               // O(1) sample -> &Loot
+//! # Ok(()) }
+//! ```
+//!
+//! ## What the macro generates
+//! * An impl of `droptables::WeightedEnum` with a static `ENTRIES: &[(Self, f64)]`
+//!   holding `(variant, weight)` for each variant.
+//! * An inherent `fn droptable() -> Result<DropTable<Self>, ProbError>` as sugar.
+//!
+//! ## Constraints & behavior
+//! * **Fieldless enums only.** If a variant has fields, you’ll get a compile error.
+//! * **Every variant must have `#[probability(...)]`.** Missing attributes are rejected.
+//! * **`#[probability(...)]` accepts any Rust expression.**
+//!   Integer literals are **upgraded to floats** recursively so `1/100` behaves
+//!   as `1.0/100.0` (FP division). This is purely a convenience to avoid the
+//!   classic integer-division footgun in weights.
+//! * The macro does **no semantic validation** (e.g., negative/NaN). Runtime
+//!   checks happen when constructing the alias table and will return `ProbError`.
+//!
+//! ## Common pitfalls
+//! * If you see “only supports fieldless variants”, remove tuple/struct fields.
+//! * If sampling fails at runtime with `ProbError`, check for negative or all-zero weights.
+//!
+//! ## Crate relationship
+//! This is a **proc-macro crate**. The runtime types (e.g., `DropTable`, `ProbError`,
+//! `WeightedEnum` trait) live in the `droptables` crate. You’ll usually write:
+//!
+//! ```rust,ignore
+//! use droptables::{DropTable, WeightedEnum};       // trait re-export
+//! use droptables_macros::WeightedEnum;             // derive macro
+//! ```
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
     Attribute, Data, DeriveInput, Expr, Fields, Lit, LitFloat, parse_macro_input, spanned::Spanned,
 };
 
-/// Variant attribute: #[probability(<expr>)]
+/// Derive `droptables::WeightedEnum` for a **fieldless** enum,
+/// using `#[probability(<expr>)]` on **every** variant to specify weights.
+///
+/// The attribute accepts any expression; integer literals inside are **promoted
+/// to floats** so `1/100` is treated as `1.0/100.0`.
+///
+/// # Examples
+/// ```rust,ignore
+/// use droptables::{DropTable, WeightedEnum};
+/// use droptables_macros::WeightedEnum;
+///
+/// #[derive(Copy, Clone, Debug, WeightedEnum)]
+/// enum Die {
+///     #[probability(1)] One,
+///     #[probability(1)] Two,
+///     #[probability(1)] Three,
+///     #[probability(1)] Four,
+///     #[probability(1)] Five,
+///     #[probability(1)] Six,
+/// }
+///
+/// let table: DropTable<Die> = Die::droptable().unwrap();
+/// ```
+///
+/// # Compile-time errors
+/// * Non-enum or non-fieldless enum: “only supports fieldless variants”
+/// * Missing `#[probability(...)]`: “missing #[probability(...)] on variant”
+/// * Malformed attribute: “use #[probability(<expr>)]”
 #[proc_macro_derive(WeightedEnum, attributes(probability))]
 pub fn derive_weighted_enum(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -97,8 +181,11 @@ pub fn derive_weighted_enum(input: TokenStream) -> TokenStream {
     expanded.into()
 }
 
-/// Recursively rewrite integer literals to floating-point (e.g., 1 -> 1.0),
-/// so that expressions like `1/100` use FP division.
+/// Recursively rewrite **integer** literals to floating-point (e.g., `1 -> 1.0`)
+/// so that expressions like `1/100` use **floating-point** division.
+///
+/// This is intentionally minimal and only touches integer literals; other kinds
+/// of literals/expressions are left as-is.
 fn to_f64_expr(mut e: Expr) -> Expr {
     match e {
         Expr::Lit(ref mut el) => {

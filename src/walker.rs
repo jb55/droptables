@@ -1,9 +1,28 @@
 //! Walker's Alias Method for O(1) sampling from a discrete distribution.
+//!
+//! The alias table stores, for each bucket `i`, a primary probability `prob[i]`
+//! and a fallback index `alias[i]`. A single uniform draw over buckets, plus
+//! a single uniform draw in `[0,1)`, yields an index in O(1).
+//!
+//! ## Construction
+//! Given non-negative weights `w`, we scale them so that the **average** is 1.
+//! Buckets with `p < 1` are matched with buckets with `p >= 1` until all are
+//! resolved; remaining buckets get probability 1 and alias to themselves.
+//!
+//! ## Properties
+//! * **Build**: O(n)
+//! * **Sample**: O(1)
+//! * **Space**: ~`(f64 + usize) * n`
+//!
+//! See [`AliasTable::new`] for input validation.
 
 use crate::error::ProbError;
 use rand::Rng;
 
 /// Alias table for discrete distribution sampling.
+///
+/// Construct with [`AliasTable::new`], then draw using
+/// [`AliasTable::sample_index`].
 #[derive(Debug, Clone)]
 pub struct AliasTable {
     prob: Vec<f64>,
@@ -11,7 +30,16 @@ pub struct AliasTable {
 }
 
 impl AliasTable {
-    /// Construct an alias table from non-negative weights. O(n).
+    /// Construct an alias table from non-negative weights. **O(n)**.
+    ///
+    /// # Errors
+    /// * [`ProbError::Empty`] if `weights` is empty
+    /// * [`ProbError::Negative`] if any weight is negative (includes `-0.0`)
+    /// * [`ProbError::ZeroSum`] if the sum is zero or not finite (`NaN`/∞)
+    ///
+    /// # Notes
+    /// * Inputs are normalized internally; original scale doesn’t matter.
+    /// * We apply a small tolerance (`1e-15`) to avoid numerical flip-flops.
     pub fn new(weights: &[f64]) -> Result<Self, ProbError> {
         let n = weights.len();
         if n == 0 {
@@ -67,7 +95,17 @@ impl AliasTable {
         Ok(Self { prob, alias })
     }
 
-    /// Draw a single sample in O(1).
+    /// Draw a single sample **index** in O(1).
+    ///
+    /// # Examples
+    /// ```rust,ignore
+    /// use rand::Rng;
+    /// # use droptables::AliasTable;
+    /// let alias = AliasTable::new(&[1.0, 2.0, 3.0]).unwrap();
+    /// let mut rng = rand::rng();
+    /// let i = alias.sample_index(&mut rng);
+    /// assert!(i < 3);
+    /// ```
     pub fn sample_index<R: Rng + ?Sized>(&self, rng: &mut R) -> usize {
         let n = self.prob.len();
         let i = rng.random_range(0..n); // replaces deprecated gen_range
@@ -80,15 +118,18 @@ impl AliasTable {
     pub fn sample_counts<R: Rng + ?Sized>(&self, rng: &mut R, draws: usize) -> Vec<usize> {
         let mut counts = vec![0usize; self.prob.len()];
         for _ in 0..draws {
-            let i = self.sample(rng);
+            let i = self.sample_index(rng);
             counts[i] += 1;
         }
         counts
     }
 
+    /// Number of categories in the table.
     pub fn len(&self) -> usize {
         self.prob.len()
     }
+
+    /// Whether the table is empty.
     pub fn is_empty(&self) -> bool {
         self.prob.is_empty()
     }
@@ -134,7 +175,7 @@ mod tests {
         let alias = AliasTable::new(&[5.0]).unwrap();
         let mut rng = rand::rng();
         for _ in 0..1000 {
-            assert_eq!(alias.sample(&mut rng), 0);
+            assert_eq!(alias.sample_index(&mut rng), 0);
         }
     }
 }
