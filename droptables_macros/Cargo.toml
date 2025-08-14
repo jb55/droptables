@@ -1,0 +1,13 @@
+[package]
+name = "droptables_macros"
+version = "0.1.0"
+edition = "2024"
+description = "Proc macros for droptables"
+license = "MIT"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = "1"
+syn = { version = "2", features = ["full"] }
