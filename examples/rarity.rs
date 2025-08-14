@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 #[derive(Copy, Eq, PartialEq, Clone, Debug, Hash, WeightedEnum)]
 enum Rarity {
-    #[probability(0.001)]
+    #[probability(1/1000)]
     Mythic,
     #[probability(1/100)]
     Legendary,
@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Sample:
     let mut rng = rand::rng();
-    for _ in 0..2000 {
+    for _ in 0..2000000 {
         hist.entry(*table.sample(&mut rng))
             .and_modify(|acc| {
                 *acc += 1;

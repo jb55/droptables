@@ -58,7 +58,7 @@
 //! ## Performance
 //! * **Build**: O(n) to construct an alias table from weights.
 //! * **Sample**: O(1) per draw (2 random numbers, 1 branch).
-//! * **Space**: 2 vectors of length `n` (f64 + usize).
+//! * **Space**: 2 vectors of length `n` (f32 + usize).
 //!
 //! ## Gotchas
 //! * Weights must be **non-negative** and not all zero; `NaN`/∞ are rejected.
@@ -100,7 +100,7 @@ pub use droptables_macros::WeightedEnum;
 /// which enables building a ready-to-sample [`DropTable`].
 pub trait WeightedEnum: Sized + 'static {
     /// All `(variant, weight)` pairs for the enum.
-    const ENTRIES: &'static [(Self, f64)];
+    const ENTRIES: &'static [(Self, f32)];
 
     /// Convenience constructor that builds a [`DropTable`] from the enum entries.
     ///
@@ -127,7 +127,7 @@ impl<T> DropTable<T> {
     /// O(n) time / O(n) space.
     pub fn from_pairs<I>(pairs: I) -> Result<Self, ProbError>
     where
-        I: IntoIterator<Item = (T, f64)>,
+        I: IntoIterator<Item = (T, f32)>,
     {
         let mut items = Vec::new();
         let mut weights = Vec::new();

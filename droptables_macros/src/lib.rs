@@ -28,7 +28,7 @@
 //! ```
 //!
 //! ## What the macro generates
-//! * An impl of `droptables::WeightedEnum` with a static `ENTRIES: &[(Self, f64)]`
+//! * An impl of `droptables::WeightedEnum` with a static `ENTRIES: &[(Self, f32)]`
 //!   holding `(variant, weight)` for each variant.
 //! * An inherent `fn droptable() -> Result<DropTable<Self>, ProbError>` as sugar.
 //!
@@ -154,15 +154,15 @@ pub fn derive_weighted_enum(input: TokenStream) -> TokenStream {
         let expr = weight_expr.unwrap();
 
         // Upgrade integer literals to floats so 1/100 => 1.0/100.0
-        let expr_f64 = to_f64_expr(expr);
+        let expr_f32 = to_f32_expr(expr);
 
-        entries.push(quote! { (Self::#ident, (#expr_f64)) });
+        entries.push(quote! { (Self::#ident, (#expr_f32)) });
     }
 
     // Generate const ENTRIES and helper droptable() inherent as sugar.
     let expanded = quote! {
         impl droptables::WeightedEnum for #enum_ident {
-            const ENTRIES: &'static [(Self, f64)] = &[
+            const ENTRIES: &'static [(Self, f32)] = &[
                 #(#entries),*
             ];
         }
@@ -186,7 +186,7 @@ pub fn derive_weighted_enum(input: TokenStream) -> TokenStream {
 ///
 /// This is intentionally minimal and only touches integer literals; other kinds
 /// of literals/expressions are left as-is.
-fn to_f64_expr(mut e: Expr) -> Expr {
+fn to_f32_expr(mut e: Expr) -> Expr {
     match e {
         Expr::Lit(ref mut el) => {
             if let Lit::Int(int) = &el.lit {
@@ -197,20 +197,20 @@ fn to_f64_expr(mut e: Expr) -> Expr {
             e
         }
         Expr::Binary(mut b) => {
-            b.left = Box::new(to_f64_expr(*b.left));
-            b.right = Box::new(to_f64_expr(*b.right));
+            b.left = Box::new(to_f32_expr(*b.left));
+            b.right = Box::new(to_f32_expr(*b.right));
             Expr::Binary(b)
         }
         Expr::Paren(mut p) => {
-            p.expr = Box::new(to_f64_expr(*p.expr));
+            p.expr = Box::new(to_f32_expr(*p.expr));
             Expr::Paren(p)
         }
         Expr::Unary(mut u) => {
-            u.expr = Box::new(to_f64_expr(*u.expr));
+            u.expr = Box::new(to_f32_expr(*u.expr));
             Expr::Unary(u)
         }
         Expr::Group(mut g) => {
-            g.expr = Box::new(to_f64_expr(*g.expr));
+            g.expr = Box::new(to_f32_expr(*g.expr));
             Expr::Group(g)
         }
         _ => e,

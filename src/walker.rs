@@ -12,7 +12,7 @@
 //! ## Properties
 //! * **Build**: O(n)
 //! * **Sample**: O(1)
-//! * **Space**: ~`(f64 + usize) * n`
+//! * **Space**: ~`(f32 + usize) * n`
 //!
 //! See [`AliasTable::new`] for input validation.
 
@@ -25,8 +25,14 @@ use rand::Rng;
 /// [`AliasTable::sample_index`].
 #[derive(Debug, Clone)]
 pub struct AliasTable {
-    prob: Vec<f64>,
-    alias: Vec<usize>,
+    probs: Vec<Bucket>,
+}
+
+#[repr(C)]
+#[derive(Default, Debug, Clone)]
+struct Bucket {
+    prob: f32,  // f32 is typically plenty here
+    alias: u32, // if n <= u32::MAX
 }
 
 impl AliasTable {
@@ -40,13 +46,13 @@ impl AliasTable {
     /// # Notes
     /// * Inputs are normalized internally; original scale doesn’t matter.
     /// * We apply a small tolerance (`1e-15`) to avoid numerical flip-flops.
-    pub fn new(weights: &[f64]) -> Result<Self, ProbError> {
+    pub fn new(weights: &[f32]) -> Result<Self, ProbError> {
         let n = weights.len();
         if n == 0 {
             return Err(ProbError::Empty);
         }
 
-        let mut sum = 0.0f64;
+        let mut sum = 0.0f32;
         for (i, &w) in weights.iter().enumerate() {
             if w.is_sign_negative() {
                 return Err(ProbError::Negative { index: i, value: w });
@@ -58,29 +64,34 @@ impl AliasTable {
         }
 
         // Scale so average is 1.
-        let mut scaled: Vec<f64> = weights.iter().map(|&w| w * n as f64 / sum).collect();
+        let mut scaled: Vec<f32> = weights.iter().map(|&w| w * n as f32 / sum).collect();
 
-        let mut prob = vec![0.0f64; n];
-        let mut alias = (0..n).collect::<Vec<_>>();
+        let mut probs = Vec::with_capacity(n);
+        for i in 0..n {
+            probs.push(Bucket {
+                prob: 0.0,
+                alias: i as u32,
+            });
+        }
 
-        let mut small = Vec::with_capacity(n);
-        let mut large = Vec::with_capacity(n);
+        let mut small: Vec<u32> = Vec::with_capacity(n);
+        let mut large: Vec<u32> = Vec::with_capacity(n);
 
         for (i, &p) in scaled.iter().enumerate() {
             if p < 1.0 {
-                small.push(i);
+                small.push(i as u32);
             } else {
-                large.push(i);
+                large.push(i as u32);
             }
         }
 
         while let (Some(s), Some(l)) = (small.pop(), large.pop()) {
-            prob[s] = scaled[s]; // in [0,1)
-            alias[s] = l;
+            probs[s as usize].prob = scaled[s as usize]; // in [0,1)
+            probs[s as usize].alias = l as u32;
 
-            scaled[l] = (scaled[l] + scaled[s]) - 1.0;
+            scaled[l as usize] = (scaled[l as usize] + scaled[s as usize]) - 1.0;
 
-            if scaled[l] < 1.0 - 1e-15 {
+            if scaled[l as usize] < 1.0 - 1e-15 {
                 small.push(l);
             } else {
                 large.push(l);
@@ -88,11 +99,11 @@ impl AliasTable {
         }
 
         for i in small.into_iter().chain(large.into_iter()) {
-            prob[i] = 1.0;
-            alias[i] = i;
+            probs[i as usize].prob = 1.0;
+            probs[i as usize].alias = i;
         }
 
-        Ok(Self { prob, alias })
+        Ok(Self { probs })
     }
 
     /// Draw a single sample **index** in O(1).
@@ -107,16 +118,20 @@ impl AliasTable {
     /// assert!(i < 3);
     /// ```
     pub fn sample_index<R: Rng + ?Sized>(&self, rng: &mut R) -> usize {
-        let n = self.prob.len();
+        let n = self.probs.len();
         let i = rng.random_range(0..n); // replaces deprecated gen_range
-        let u: f64 = rng.random(); // replaces deprecated r#gen()/gen()
-        if u < self.prob[i] { i } else { self.alias[i] }
+        let u: f32 = rng.random(); // replaces deprecated r#gen()/gen()
+        if u < self.probs[i].prob {
+            i
+        } else {
+            self.probs[i].alias as usize
+        }
     }
 
     /// Draw k samples, returning counts per index (useful for checks).
     #[cfg(test)]
     pub fn sample_counts<R: Rng + ?Sized>(&self, rng: &mut R, draws: usize) -> Vec<usize> {
-        let mut counts = vec![0usize; self.prob.len()];
+        let mut counts = vec![0usize; self.probs.len()];
         for _ in 0..draws {
             let i = self.sample_index(rng);
             counts[i] += 1;
@@ -126,12 +141,12 @@ impl AliasTable {
 
     /// Number of categories in the table.
     pub fn len(&self) -> usize {
-        self.prob.len()
+        self.probs.len()
     }
 
     /// Whether the table is empty.
     pub fn is_empty(&self) -> bool {
-        self.prob.is_empty()
+        self.probs.is_empty()
     }
 }
 
@@ -162,10 +177,10 @@ mod tests {
         let draws = 2_000_0usize; // keep test light; raise locally if you like
         let counts = alias.sample_counts(&mut rng, draws);
 
-        let sum_w: f64 = weights.iter().sum();
+        let sum_w: f32 = weights.iter().sum();
         for (i, &c) in counts.iter().enumerate() {
             let p = weights[i] / sum_w;
-            let emp = c as f64 / draws as f64;
+            let emp = c as f32 / draws as f32;
             assert!((emp - p).abs() < 0.05, "i={i} emp={emp} p={p}");
         }
     }

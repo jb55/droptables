@@ -1,7 +1,7 @@
 #[derive(Debug)]
 pub enum ProbError {
     Empty,
-    Negative { index: usize, value: f64 },
+    Negative { index: usize, value: f32 },
     ZeroSum,
 }
 
