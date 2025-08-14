@@ -268,8 +268,6 @@ fn parse_num(s: &str) -> Result<f64, &'static str> {
     s.parse::<f64>().map_err(|_| "failed to parse number")
 }
 
-
-
 #[proc_macro_derive(UniformEnum)]
 pub fn derive_uniform_enum(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -279,7 +277,9 @@ pub fn derive_uniform_enum(input: TokenStream) -> TokenStream {
         return syn::Error::new(
             input.ident.span(),
             "UniformEnum can only be derived for fieldless enums",
-        ).to_compile_error().into();
+        )
+        .to_compile_error()
+        .into();
     };
 
     // verify fieldless, collect idents in declaration order
@@ -288,10 +288,9 @@ pub fn derive_uniform_enum(input: TokenStream) -> TokenStream {
         match v.fields {
             Fields::Unit => idents.push(v.ident.clone()),
             _ => {
-                return syn::Error::new(
-                    v.span(),
-                    "UniformEnum only supports fieldless variants",
-                ).to_compile_error().into();
+                return syn::Error::new(v.span(), "UniformEnum only supports fieldless variants")
+                    .to_compile_error()
+                    .into();
             }
         }
     }
