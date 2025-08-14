@@ -70,9 +70,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Under the hood:
 
-1. **`WeightedEnum` macro** scans your enum variants for `#[weight(...)]` attributes.
+1. **`WeightedEnum` macro** scans your enum variants for `#[odds = "1/100"]` attributes.
 2. Probabilities are compiled into a static `ENTRIES` array.
-3. `DropTable` builds an alias table via `WalkerAlias` for O(1) sampling.
+3. `DropTable` builds an alias table via `WeightedSampler` for O(1) sampling.
 4. You call `.sample()` and get your item **fast**.
 
 ---
