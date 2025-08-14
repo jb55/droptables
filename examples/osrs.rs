@@ -3,32 +3,36 @@ use std::collections::HashMap;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, WeightedEnum)]
 enum UniqueRoll {
-    // Approximate OSRS-ish odds (illustrative)
+    // Exact OSRS behaviour:
+    //  - 1/128 to hit the Bandos armour table; choose piece uniformly (=> each is 1/384 overall)
+    //  - 1/508 Bandos hilt
+    //  - 1/256 any godsword shard; choose shard uniformly (=> 1/768 each)
+    //  - else NotUnique
     #[odds = "1/128"]
-    BandosArmor,       // (choose piece uniformly)
+    BandosArmor,
     #[odds = "1/508"]
     BandosHilt,
     #[odds = "1/256"]
-    GodswordShard,     // (choose shard uniformly)
+    GodswordShard,
     #[rest]
-    NotUnique,         // proceed to RDT access check
+    NotUnique, // proceed to RDT access check
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, UniformEnum)]
 enum BandosArmorItem {
-    Chestplate,
+    Chestplate, // each ends up 1/384 overall
     Tassets,
     Boots,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, UniformEnum)]
 enum GodswordShardItem {
-    Shard1,
+    Shard1, // each 1/768 overall
     Shard2,
     Shard3,
 }
 
-// RDT access gate: only rolled if UniqueRoll::NotUnique.
+// RDT access gate on NotUnique: 8/127 chance to roll RDT, else roll main table.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, WeightedEnum)]
 enum RdtAccess {
     #[odds = "8/127"]
@@ -37,7 +41,7 @@ enum RdtAccess {
     Miss,
 }
 
-// Keep the RDT tiny for illustration.
+// Tiny illustrative RDT (not comprehensive).
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, WeightedEnum)]
 enum RareDropTableItem {
     #[odds = "1/100"]
@@ -54,36 +58,49 @@ enum RareDropTableItem {
     RuneStack,
 }
 
-// “Main” common table: the thing you get if you fail uniques and RDT gate.
+// “Main” table when you miss uniques and fail the RDT gate.
+// The wiki shows categories, quantities, and that RDT access is 8/127; exact per-item weights aren’t public,
+// so we pick plausible relative weights that feel right in simulation.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, WeightedEnum)]
 enum CommonMainItem {
-    #[odds = "20/100"]
-    Coins20500to21000,
-    #[odds = "10/100"]
+    // coin piles are very common; bias them highest
+    #[odds = "240/1000"]
+    Coins19500to21000,
+
+    // staple supplies
+    #[odds = "96/1000"]
     SuperRestore4x3,
-    #[odds = "8/100"]
-    MagicLogs15to20,
-    #[odds = "4/100"]
+    #[odds = "72/1000"]
+    MagicLogs15to20, // noted
+    #[odds = "60/1000"]
+    NatureRunes60to70,
+
+    // herb-y stuff
+    #[odds = "36/1000"]
     SnapdragonSeed,
-    #[odds = "3/100"]
-    GrimySnapdragonx3,
+    #[odds = "30/1000"]
+    GrimySnapdragonx3, // noted
+
+    // ores (noted)
+    #[odds = "36/1000"]
+    AdamantiteOre15to20Noted,
+    #[odds = "48/1000"]
+    Coal115to120Noted,
+
+    #[odds = "120/1000"]
+    RunePlatelegsOrSkirt, // alchable filler
+    #[odds = "90/1000"]
+    RuneKiteshield, // alchable filler
+    #[odds = "72/1000"]
+    LawRunes20to30, // common runes
+    #[odds = "50/1000"]
+    DeathRunes30to40, // common runes
+    #[odds = "50/1000"]
+    HerbMixLowTier, // assorted herbs/seeds
+
+    // anything else we’re not modelling explicitly
     #[rest]
     Misc,
-}
-
-// The guaranteed “extra” table (a second, separate roll every kill).
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, WeightedEnum)]
-enum ExtraItem {
-    #[odds = "25/100"]
-    BonesNoted6to8,
-    #[odds = "20/100"]
-    LawRunes20to30,
-    #[odds = "10/100"]
-    NatureRunes25to35,
-    #[odds = "5/100"]
-    Coins4000to6000,
-    #[rest]
-    SuppliesMisc,
 }
 
 // Tertiaries (independent of everything else).
@@ -95,10 +112,11 @@ enum TertiaryPet {
     Nothing,
 }
 
+// Graardor gives Elite clues at 1/250.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, WeightedEnum)]
 enum TertiaryClue {
-    #[odds = "1/100"] // hard clue per your text
-    HardClue,
+    #[odds = "1/250"]
+    EliteClue,
     #[rest]
     Nothing,
 }
@@ -127,7 +145,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rdt_gate = RdtAccess::droptable()?; // weighted yes/no
     let rdt = RareDropTableItem::droptable()?; // weighted
     let common_main = CommonMainItem::droptable()?; // weighted
-    let extra = ExtraItem::droptable()?; // weighted
 
     // Tertiaries
     let pet = TertiaryPet::droptable()?;
@@ -146,59 +163,76 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Kill {} — drops:", i + 1);
         }
 
+        // ===== Always drop =====
+        *hist.entry("BigBones".into()).or_default() += 1;
+        if show_drop {
+            println!("  Always: BigBones");
+        }
+
         // ===== Primary flow: Unique ➜ (if miss) RDT gate ➜ (if miss) Common =====
         match unique.sample_owned(&mut rng) {
             UniqueRoll::BandosArmor => {
                 let piece = bandos_armor.sample_owned(&mut rng);
                 *hist.entry(format!("{piece:?}")).or_default() += 1;
-                if show_drop { println!("  Unique: Bandos {piece:?}"); }
+                if show_drop {
+                    println!("  Unique: Bandos {piece:?}");
+                }
             }
             UniqueRoll::BandosHilt => {
                 *hist.entry("BandosHilt".into()).or_default() += 1;
-                if show_drop { println!("  Unique: BandosHilt"); }
+                if show_drop {
+                    println!("  Unique: BandosHilt");
+                }
             }
             UniqueRoll::GodswordShard => {
                 let which = shard_piece.sample_owned(&mut rng);
                 *hist.entry(format!("{which:?}")).or_default() += 1;
-                if show_drop { println!("  Unique: {which:?}"); }
-            }
-            UniqueRoll::NotUnique => {
-                match rdt_gate.sample_owned(&mut rng) {
-                    RdtAccess::Hit => {
-                        let r = rdt.sample_owned(&mut rng);
-                        *hist.entry(format!("{r:?}")).or_default() += 1;
-                        if show_drop { println!("  RDT: {r:?}"); }
-                    }
-                    RdtAccess::Miss => {
-                        let c = common_main.sample_owned(&mut rng);
-                        *hist.entry(format!("{c:?}")).or_default() += 1;
-                        if show_drop { println!("  Common: {c:?}"); }
-                    }
+                if show_drop {
+                    println!("  Unique: {which:?}");
                 }
             }
+            UniqueRoll::NotUnique => match rdt_gate.sample_owned(&mut rng) {
+                RdtAccess::Hit => {
+                    let r = rdt.sample_owned(&mut rng);
+                    *hist.entry(format!("{r:?}")).or_default() += 1;
+                    if show_drop {
+                        println!("  RDT: {r:?}");
+                    }
+                }
+                RdtAccess::Miss => {
+                    let c = common_main.sample_owned(&mut rng);
+                    *hist.entry(format!("{c:?}")).or_default() += 1;
+                    if show_drop {
+                        println!("  Common: {c:?}");
+                    }
+                }
+            },
         }
-
-        // ===== Guaranteed “extra” roll =====
-        let e = extra.sample_owned(&mut rng);
-        *hist.entry(format!("{e:?}")).or_default() += 1;
-        if show_drop { println!("  Extra: {e:?}"); }
 
         // ===== Independent tertiaries =====
         if let TertiaryPet::PetGeneralGraardor = pet.sample_owned(&mut rng) {
             *hist.entry("PetGeneralGraardor".into()).or_default() += 1;
-            if show_drop { println!("  Tertiary: PetGeneralGraardor"); }
+            if show_drop {
+                println!("  Tertiary: PetGeneralGraardor");
+            }
         }
-        if let TertiaryClue::HardClue = clue.sample_owned(&mut rng) {
-            *hist.entry("HardClue".into()).or_default() += 1;
-            if show_drop { println!("  Tertiary: HardClue"); }
+        if let TertiaryClue::EliteClue = clue.sample_owned(&mut rng) {
+            *hist.entry("EliteClue".into()).or_default() += 1;
+            if show_drop {
+                println!("  Tertiary: EliteClue");
+            }
         }
         if let TertiaryLongBone::LongBone = lbone.sample_owned(&mut rng) {
             *hist.entry("LongBone".into()).or_default() += 1;
-            if show_drop { println!("  Tertiary: LongBone"); }
+            if show_drop {
+                println!("  Tertiary: LongBone");
+            }
         }
         if let TertiaryCurvedBone::CurvedBone = cbone.sample_owned(&mut rng) {
             *hist.entry("CurvedBone".into()).or_default() += 1;
-            if show_drop { println!("  Tertiary: CurvedBone"); }
+            if show_drop {
+                println!("  Tertiary: CurvedBone");
+            }
         }
 
         if show_drop {
