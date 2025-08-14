@@ -4,12 +4,12 @@ mod error;
 mod walker;
 
 pub use error::ProbError;
-use walker::WalkerAlias;
+pub use walker::AliasTable;
 
 /// --- Generic drop table (labels + alias) ---
 #[derive(Debug, Clone)]
 pub struct DropTable<T> {
-    alias: WalkerAlias,
+    alias: AliasTable,
     items: Vec<T>,
 }
 
@@ -40,13 +40,13 @@ impl<T> DropTable<T> {
             items.push(t);
             weights.push(w);
         }
-        let alias = WalkerAlias::new(&weights)?;
+        let alias = AliasTable::new(&weights)?;
         Ok(Self { alias, items })
     }
 
     /// Sample by reference (no Clone bound).
     pub fn sample<'a, R: Rng + ?Sized>(&'a self, rng: &mut R) -> &'a T {
-        let idx = self.alias.sample(rng);
+        let idx = self.alias.sample_index(rng);
         &self.items[idx]
     }
 
@@ -55,7 +55,7 @@ impl<T> DropTable<T> {
     where
         T: Clone,
     {
-        self.items[self.alias.sample(rng)].clone()
+        self.items[self.alias.sample_index(rng)].clone()
     }
 
     pub fn len(&self) -> usize {
@@ -77,6 +77,3 @@ mod tests {
         let _ = dt.sample(&mut rng);
     }
 }
-
-
-

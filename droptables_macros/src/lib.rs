@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    parse_macro_input, spanned::Spanned, Attribute, Data, DeriveInput, Expr, Fields, Lit, LitFloat,
+    Attribute, Data, DeriveInput, Expr, Fields, Lit, LitFloat, parse_macro_input, spanned::Spanned,
 };
 
 /// Variant attribute: #[probability(<expr>)]
@@ -110,7 +110,7 @@ fn to_f64_expr(mut e: Expr) -> Expr {
             e
         }
         Expr::Binary(mut b) => {
-            b.left  = Box::new(to_f64_expr(*b.left));
+            b.left = Box::new(to_f64_expr(*b.left));
             b.right = Box::new(to_f64_expr(*b.right));
             Expr::Binary(b)
         }
@@ -129,4 +129,3 @@ fn to_f64_expr(mut e: Expr) -> Expr {
         _ => e,
     }
 }
-

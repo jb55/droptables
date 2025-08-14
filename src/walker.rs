@@ -5,12 +5,12 @@ use rand::Rng;
 
 /// Alias table for discrete distribution sampling.
 #[derive(Debug, Clone)]
-pub struct WalkerAlias {
+pub struct AliasTable {
     prob: Vec<f64>,
     alias: Vec<usize>,
 }
 
-impl WalkerAlias {
+impl AliasTable {
     /// Construct an alias table from non-negative weights. O(n).
     pub fn new(weights: &[f64]) -> Result<Self, ProbError> {
         let n = weights.len();
@@ -68,7 +68,7 @@ impl WalkerAlias {
     }
 
     /// Draw a single sample in O(1).
-    pub fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> usize {
+    pub fn sample_index<R: Rng + ?Sized>(&self, rng: &mut R) -> usize {
         let n = self.prob.len();
         let i = rng.random_range(0..n); // replaces deprecated gen_range
         let u: f64 = rng.random(); // replaces deprecated r#gen()/gen()
@@ -101,13 +101,13 @@ mod tests {
 
     #[test]
     fn rejects_bad_inputs() {
-        assert!(matches!(WalkerAlias::new(&[]), Err(ProbError::Empty)));
+        assert!(matches!(AliasTable::new(&[]), Err(ProbError::Empty)));
         assert!(matches!(
-            WalkerAlias::new(&[0.0, 0.0]),
+            AliasTable::new(&[0.0, 0.0]),
             Err(ProbError::ZeroSum)
         ));
         assert!(matches!(
-            WalkerAlias::new(&[-0.1, 0.2]),
+            AliasTable::new(&[-0.1, 0.2]),
             Err(ProbError::Negative { .. })
         ));
     }
@@ -115,7 +115,7 @@ mod tests {
     #[test]
     fn roughly_matches_distribution() {
         let weights = [1.0, 2.0, 3.0, 4.0];
-        let alias = WalkerAlias::new(&weights).unwrap();
+        let alias = AliasTable::new(&weights).unwrap();
 
         let mut rng = StdRng::seed_from_u64(42);
         let draws = 2_000_0usize; // keep test light; raise locally if you like
@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn degenerate_singleton() {
-        let alias = WalkerAlias::new(&[5.0]).unwrap();
+        let alias = AliasTable::new(&[5.0]).unwrap();
         let mut rng = rand::rng();
         for _ in 0..1000 {
             assert_eq!(alias.sample(&mut rng), 0);
