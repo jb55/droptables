@@ -176,24 +176,71 @@ pub fn derive_weighted_enum(input: TokenStream) -> TokenStream {
 
     // Stage 3: expand
     let entries = finalized.iter().map(|(ident, p)| {
-        quote! { (Self::#ident, #p) }
+        quote! { (#enum_ident::#ident, #p) }
     });
+
+    // Also capture order-preserving lists for a static VARS/WEIGHTS pair.
+    // IMPORTANT: collect to Vec<TokenStream> so we can reuse them multiple times
+    // inside a single `quote!` without moving the iterator.
+    let var_idents: Vec<proc_macro2::TokenStream> = finalized
+        .iter()
+        .map(|(ident, _)| quote! { #enum_ident::#ident })
+        .collect();
+    let var_weights: Vec<proc_macro2::TokenStream> =
+        finalized.iter().map(|(_, p)| quote! { #p }).collect();
+    // Borrowed aliases used inside quote! to avoid moving the Vecs.
+    let var_idents_ref = &var_idents;
+    let var_weights_ref = &var_weights;
 
     let expanded = quote! {
         impl droptables::WeightedEnum for #enum_ident {
-            const ENTRIES: &'static [(Self, f32)] = &[
+            const ENTRIES: &'static [(#enum_ident, f32)] = &[
                 #(#entries),*
             ];
         }
 
         impl #enum_ident {
-            /// Build a `DropTable<#enum_ident>` from literal per-variant probabilities.
-            pub fn droptable() -> ::core::result::Result<droptables::DropTable<Self>, droptables::ProbError>
+            /// Build a **zero-storage** generator backed by an alias sampler and a
+            /// static slice of variants (same order as the macro entries).
+            ///
+            /// Returns `StaticDropTable<WeightedSampler, Self>`, which can:
+            /// - `sample(&mut rng) -> &'static Self` (borrowed)
+            /// - `sample_owned(&mut rng) -> Self`    (requires `Copy`)
+            pub fn droptable() -> ::core::result::Result<
+                droptables::StaticDropTable<droptables::WeightedSampler, #enum_ident>,
+                droptables::ProbError
+            >
             where
-                Self: Copy
+                #enum_ident: Copy + 'static
             {
-                <Self as droptables::WeightedEnum>::droptable()
+                const VARS: &'static [#enum_ident] = &[
+                    #(#var_idents_ref),*
+                ];
+                const WEIGHTS: &[f32] = &[
+                    #(#var_weights_ref),*
+                ];
+                let sampler = droptables::WeightedSampler::new(WEIGHTS)?;
+                Ok(droptables::StaticDropTable::new(sampler, VARS))
             }
+
+            /// If you explicitly want the **owning** table with internal alias state
+            /// (stores a `Vec<Self>` so you can take `&Self` without `'static`),
+            /// call this.
+            pub fn droptable_stateful() -> ::core::result::Result<droptables::DropTable<#enum_ident>, droptables::ProbError>
+            where
+                #enum_ident: Copy
+            {
+                <#enum_ident as droptables::WeightedEnum>::droptable()
+            }
+
+            /// Weighted index sampler (alias) if you only want indices.
+            pub fn sampler() -> ::core::result::Result<droptables::WeightedSampler, droptables::ProbError> {
+                const WEIGHTS: &[f32] = &[
+                    #(#var_weights_ref),*
+                ];
+                droptables::WeightedSampler::new(WEIGHTS)
+            }
+
         }
     };
 
@@ -219,4 +266,70 @@ fn parse_odds_str(s: &str) -> Result<f64, &'static str> {
 
 fn parse_num(s: &str) -> Result<f64, &'static str> {
     s.parse::<f64>().map_err(|_| "failed to parse number")
+}
+
+
+
+#[proc_macro_derive(UniformEnum)]
+pub fn derive_uniform_enum(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let enum_ident = &input.ident;
+
+    let Data::Enum(data_enum) = &input.data else {
+        return syn::Error::new(
+            input.ident.span(),
+            "UniformEnum can only be derived for fieldless enums",
+        ).to_compile_error().into();
+    };
+
+    // verify fieldless, collect idents in declaration order
+    let mut idents = Vec::with_capacity(data_enum.variants.len());
+    for v in &data_enum.variants {
+        match v.fields {
+            Fields::Unit => idents.push(v.ident.clone()),
+            _ => {
+                return syn::Error::new(
+                    v.span(),
+                    "UniformEnum only supports fieldless variants",
+                ).to_compile_error().into();
+            }
+        }
+    }
+
+    let vars = idents.iter().map(|ident| quote! { #enum_ident::#ident });
+
+    let expanded = quote! {
+        impl droptables::UniformEnum for #enum_ident {
+            const VARS: &'static [#enum_ident] = &[
+                #(#vars),*
+            ];
+        }
+
+        impl #enum_ident {
+            /// Zero-storage uniform droptable over the enum variants.
+            pub fn droptable() -> ::core::result::Result<
+                droptables::StaticDropTable<droptables::UniformSampler, #enum_ident>,
+                droptables::ProbError
+            >
+            where
+                #enum_ident: Copy + 'static
+            {
+                let sampler = droptables::UniformSampler::new(<#enum_ident as droptables::UniformEnum>::VARS.len())?;
+                Ok(droptables::StaticDropTable::new(sampler, <#enum_ident as droptables::UniformEnum>::VARS))
+            }
+
+            /// Owning Vec-backed uniform table (allocates).
+            pub fn droptable_stateful() -> ::core::result::Result<
+                droptables::UniformTable<#enum_ident>,
+                droptables::ProbError
+            >
+            where
+                #enum_ident: Clone
+            {
+                droptables::UniformTable::from_items(<#enum_ident as droptables::UniformEnum>::VARS.iter().cloned())
+            }
+        }
+    };
+
+    expanded.into()
 }

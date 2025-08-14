@@ -73,23 +73,38 @@
 //! `rand` integration uses the modern `Rng::random()` / `random_range()` APIs.use rand::Rng;
 
 mod error;
+mod sampler;
+mod staticdt;
+mod uniform;
 mod walker;
 
+/// A minimal interface for “index samplers”.
+/// Implemented by `WeightedSampler` (weighted) and `UniformSampler` (equal odds).
+#[allow(clippy::len_without_is_empty)]
+pub trait IndexSampler {
+    fn len(&self) -> usize;
+    fn sample_index<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> usize;
+}
+
 pub use error::ProbError;
-pub use walker::AliasTable;
+pub use sampler::UniformSampler;
+pub use staticdt::StaticDropTable;
+pub use uniform::{UniformEnum, UniformTable};
+pub use walker::WeightedSampler;
 
 use rand::Rng;
 
 /// A generic “drop table”: associates items with weights and samples them
-/// using an internal [`AliasTable`].
+/// using an internal [`WeightedSampler`].
 ///
 /// Build it from any iterator of `(item, weight)` where `weight >= 0`.
 #[derive(Debug, Clone)]
 pub struct DropTable<T> {
-    alias: AliasTable,
+    alias: WeightedSampler,
     items: Vec<T>,
 }
 
+pub use droptables_macros::UniformEnum;
 /// Derive macro imported from `droptables_macros`.
 /// See the crate-level example for usage.
 pub use droptables_macros::WeightedEnum;
@@ -105,7 +120,7 @@ pub trait WeightedEnum: Sized + 'static {
     /// Convenience constructor that builds a [`DropTable`] from the enum entries.
     ///
     /// # Errors
-    /// See [`AliasTable::new`] and [`ProbError`]: zero length, negative weight,
+    /// See [`WeightedSampler::new`] and [`ProbError`]: zero length, negative weight,
     /// non-finite or zero total weight will error.
     fn droptable() -> Result<DropTable<Self>, ProbError>
     where
@@ -135,7 +150,7 @@ impl<T> DropTable<T> {
             items.push(t);
             weights.push(w);
         }
-        let alias = AliasTable::new(&weights)?;
+        let alias = WeightedSampler::new(&weights)?;
         Ok(Self { alias, items })
     }
 

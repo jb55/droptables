@@ -14,17 +14,17 @@
 //! * **Sample**: O(1)
 //! * **Space**: ~`(f32 + usize) * n`
 //!
-//! See [`AliasTable::new`] for input validation.
+//! See [`WeightedSampler::new`] for input validation.
 
 use crate::error::ProbError;
 use rand::Rng;
 
 /// Alias table for discrete distribution sampling.
 ///
-/// Construct with [`AliasTable::new`], then draw using
-/// [`AliasTable::sample_index`].
+/// Construct with [`WeightedSampler::new`], then draw using
+/// [`WeightedSampler::sample_index`].
 #[derive(Debug, Clone)]
-pub struct AliasTable {
+pub struct WeightedSampler {
     probs: Vec<Bucket>,
 }
 
@@ -35,7 +35,7 @@ struct Bucket {
     alias: u32, // if n <= u32::MAX
 }
 
-impl AliasTable {
+impl WeightedSampler {
     /// Construct an alias table from non-negative weights. **O(n)**.
     ///
     /// # Errors
@@ -111,8 +111,8 @@ impl AliasTable {
     /// # Examples
     /// ```rust,ignore
     /// use rand::Rng;
-    /// # use droptables::AliasTable;
-    /// let alias = AliasTable::new(&[1.0, 2.0, 3.0]).unwrap();
+    /// # use droptables::WeightedSampler;
+    /// let alias = WeightedSampler::new(&[1.0, 2.0, 3.0]).unwrap();
     /// let mut rng = rand::rng();
     /// let i = alias.sample_index(&mut rng);
     /// assert!(i < 3);
@@ -157,13 +157,13 @@ mod tests {
 
     #[test]
     fn rejects_bad_inputs() {
-        assert!(matches!(AliasTable::new(&[]), Err(ProbError::Empty)));
+        assert!(matches!(WeightedSampler::new(&[]), Err(ProbError::Empty)));
         assert!(matches!(
-            AliasTable::new(&[0.0, 0.0]),
+            WeightedSampler::new(&[0.0, 0.0]),
             Err(ProbError::ZeroSum)
         ));
         assert!(matches!(
-            AliasTable::new(&[-0.1, 0.2]),
+            WeightedSampler::new(&[-0.1, 0.2]),
             Err(ProbError::Negative { .. })
         ));
     }
@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn roughly_matches_distribution() {
         let weights = [1.0, 2.0, 3.0, 4.0];
-        let alias = AliasTable::new(&weights).unwrap();
+        let alias = WeightedSampler::new(&weights).unwrap();
 
         let mut rng = StdRng::seed_from_u64(42);
         let draws = 2_000_0usize; // keep test light; raise locally if you like
@@ -187,7 +187,7 @@ mod tests {
 
     #[test]
     fn degenerate_singleton() {
-        let alias = AliasTable::new(&[5.0]).unwrap();
+        let alias = WeightedSampler::new(&[5.0]).unwrap();
         let mut rng = rand::rng();
         for _ in 0..1000 {
             assert_eq!(alias.sample_index(&mut rng), 0);
