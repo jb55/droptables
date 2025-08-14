@@ -10,7 +10,7 @@ It’s perfect for games, loot systems, procedural generation, or anywhere you n
 ## ✨ Features
 
 * **⚡ O(1) Sampling** – Uses [Walker’s Alias Method](https://en.wikipedia.org/wiki/Alias_method) for constant-time draws.
-* **📦 Enum Power-Up** – Derive probabilities directly from enum variants with `#[probability(...)]`.
+* **📦 Enum Power-Up** – Derive probabilities directly from enum variants with `#[weight(...)]`.
 * **🔮 Flexible Sources** – Build from enums **or** from arbitrary `(item, weight)` pairs.
 * **🛡️ Error-checked** – Prevents negative weights, zero-sum disasters, and other statistical crimes.
 * **🥷 No Cloning Required** – Sample by reference or by value.
@@ -37,13 +37,13 @@ use std::collections::HashMap;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, WeightedEnum)]
 enum Rarity {
-    #[probability(0.001)]
+    #[odds = "1/1000"]
     Mythic,
-    #[probability(1/100)]
+    #[odds = "1/100"]
     Legendary,
-    #[probability(20/100)]
+    #[odds = "20/100"]
     Uncommon,
-    #[probability(50/100)]
+    #[rest]
     Common,
 }
 
@@ -70,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Under the hood:
 
-1. **`WeightedEnum` macro** scans your enum variants for `#[probability(...)]` attributes.
+1. **`WeightedEnum` macro** scans your enum variants for `#[weight(...)]` attributes.
 2. Probabilities are compiled into a static `ENTRIES` array.
 3. `DropTable` builds an alias table via `WalkerAlias` for O(1) sampling.
 4. You call `.sample()` and get your item **fast**.

@@ -3,13 +3,13 @@ use std::collections::HashMap;
 
 #[derive(Copy, Eq, PartialEq, Clone, Debug, Hash, WeightedEnum)]
 enum Rarity {
-    #[probability(1/1000)]
+    #[odds = "1/1000"]
     Mythic,
-    #[probability(1/100)]
+    #[odds = "1/100"]
     Legendary,
-    #[probability(20/100)]
+    #[odds = "20/100"]
     Uncommon,
-    #[probability(50/100)]
+    #[rest]
     Common,
 }
 
