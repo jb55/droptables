@@ -1,5 +1,4 @@
-
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion, Throughput};
+use criterion::{BatchSize, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use droptables::DropTable;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg32;

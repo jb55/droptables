@@ -1,8 +1,8 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    parse_macro_input, spanned::Spanned, Attribute, Data, DeriveInput, Fields, Lit, Meta,
-    MetaNameValue,
+    Attribute, Data, DeriveInput, Fields, Lit, Meta, MetaNameValue, parse_macro_input,
+    spanned::Spanned,
 };
 
 #[proc_macro_derive(WeightedEnum, attributes(odds, rest))]
@@ -23,8 +23,8 @@ pub fn derive_weighted_enum(input: TokenStream) -> TokenStream {
     #[derive(Debug)]
     struct VarTmp {
         ident: syn::Ident,
-        prob: Option<f64>,          // from #[odds="A/B"]
-        is_rest: bool,              // from #[rest]
+        prob: Option<f64>, // from #[odds="A/B"]
+        is_rest: bool,     // from #[rest]
     }
 
     let mut tmp: Vec<VarTmp> = Vec::with_capacity(data_enum.variants.len());
@@ -46,29 +46,26 @@ pub fn derive_weighted_enum(input: TokenStream) -> TokenStream {
         for Attribute { meta, .. } in &v.attrs {
             if meta.path().is_ident("odds") {
                 let Meta::NameValue(MetaNameValue { value, .. }) = meta else {
-                    return syn::Error::new(
-                        meta.span(),
-                        r#"use #[odds = "A/B"] (string literal)"#,
-                    )
-                    .to_compile_error()
-                    .into();
+                    return syn::Error::new(meta.span(), r#"use #[odds = "A/B"] (string literal)"#)
+                        .to_compile_error()
+                        .into();
                 };
 
                 // In syn 2, value is an Expr; we need a string literal.
                 let p = match &value {
-                    syn::Expr::Lit(syn::ExprLit { lit: Lit::Str(s), .. }) => {
-                        match parse_odds_str(&s.value()) {
-                            Ok(p) => p,
-                            Err(e) => return syn::Error::new(s.span(), e).to_compile_error().into(),
-                        }
-                    }
+                    syn::Expr::Lit(syn::ExprLit {
+                        lit: Lit::Str(s), ..
+                    }) => match parse_odds_str(&s.value()) {
+                        Ok(p) => p,
+                        Err(e) => return syn::Error::new(s.span(), e).to_compile_error().into(),
+                    },
                     _ => {
                         return syn::Error::new(
                             value.span(),
                             r#"odds must be a string literal like "1/100""#,
                         )
                         .to_compile_error()
-                        .into()
+                        .into();
                     }
                 };
 
@@ -113,12 +110,9 @@ pub fn derive_weighted_enum(input: TokenStream) -> TokenStream {
     }
 
     if rest_count > 1 {
-        return syn::Error::new(
-            enum_ident.span(),
-            "at most one variant may use #[rest]",
-        )
-        .to_compile_error()
-        .into();
+        return syn::Error::new(enum_ident.span(), "at most one variant may use #[rest]")
+            .to_compile_error()
+            .into();
     }
 
     // Stage 2: validate and materialize probabilities
@@ -151,7 +145,11 @@ pub fn derive_weighted_enum(input: TokenStream) -> TokenStream {
         tmp.into_iter()
             .map(|v| {
                 let p = if v.is_rest {
-                    if rest_val < 0.0 && rest_val.abs() <= EPS { 0.0 } else { rest_val }
+                    if rest_val < 0.0 && rest_val.abs() <= EPS {
+                        0.0
+                    } else {
+                        rest_val
+                    }
                 } else {
                     v.prob.unwrap()
                 };
@@ -163,7 +161,10 @@ pub fn derive_weighted_enum(input: TokenStream) -> TokenStream {
         if (sum_known - 1.0).abs() > EPS {
             return syn::Error::new(
                 enum_ident.span(),
-                format!("probabilities must sum to 1.0 (±{EPS}): got {:.8}", sum_known),
+                format!(
+                    "probabilities must sum to 1.0 (±{EPS}): got {:.8}",
+                    sum_known
+                ),
             )
             .to_compile_error()
             .into();

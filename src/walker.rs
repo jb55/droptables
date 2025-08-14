@@ -87,7 +87,7 @@ impl AliasTable {
 
         while let (Some(s), Some(l)) = (small.pop(), large.pop()) {
             probs[s as usize].prob = scaled[s as usize]; // in [0,1)
-            probs[s as usize].alias = l as u32;
+            probs[s as usize].alias = l;
 
             scaled[l as usize] = (scaled[l as usize] + scaled[s as usize]) - 1.0;
 
