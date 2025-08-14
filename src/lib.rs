@@ -70,7 +70,7 @@
 //!
 //! ---
 //!
-//! `rand` integration uses the modern `Rng::random()` / `random_range()` APIs.use rand::Rng;
+//! `rand` integration uses the modern `Rng::random()` / `random_range()` APIs
 
 mod error;
 mod sampler;
